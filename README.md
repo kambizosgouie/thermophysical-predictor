@@ -366,11 +366,19 @@ Both plots include axis labels using the actual target variable name, a grid, an
 
 ## Quick Start
 
-### Requirements
+### Online Access
+
+The app is publicly available — no installation required:
+
+**https://thermophysical-predictor-millie20260329.streamlit.app/**
+
+### Local Setup
+
+#### Requirements
 - Python 3.10 or newer  
   See [HOW_TO_RUN.md](HOW_TO_RUN.md) for complete step-by-step installation instructions.
 
-### Steps
+#### Steps
 
 1. **Install dependencies**
    ```

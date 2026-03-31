@@ -1,5 +1,13 @@
 # How to Run — Thermophysical Property Predictor
 
+## Online Access
+
+The app is publicly available online — no installation required:
+
+**https://thermophysical-predictor-millie20260329.streamlit.app/**
+
+---
+
 ## Prerequisites
 
 - **Python 3.10 or newer** must be installed on your machine.  
