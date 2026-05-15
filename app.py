@@ -22,8 +22,22 @@ import shap
 st.set_page_config(page_title="Thermophysical Predictor", layout="wide")
 st.title("Thermophysical Property Predictor")
 
+ALL_FEATURES = ["temp", "loading", "conc"]
+
+
+def canonical_feature_order(selected):
+    """Keep temp → loading → conc order regardless of multiselect UI order."""
+    return [c for c in ALL_FEATURES if c in selected]
+
+
 # ── Session state ─────────────────────────────────────────────────────────────
-for _k, _v in [("trained", False), ("csv_bytes", None), ("t1", None), ("t2", None)]:
+for _k, _v in [
+    ("trained", False),
+    ("csv_bytes", None),
+    ("t1", None),
+    ("t2", None),
+    ("feature_cols", None),
+]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
@@ -31,10 +45,30 @@ for _k, _v in [("trained", False), ("csv_bytes", None), ("t1", None), ("t2", Non
 with st.sidebar:
     st.header("Upload & Train")
     uploaded_file = st.file_uploader("CSV file", type="csv")
+    _avail = []
+    feature_selection = []
+    if uploaded_file is not None:
+        uploaded_file.seek(0)
+        _peek = pd.read_csv(uploaded_file, nrows=1)
+        _avail = [c for c in ALL_FEATURES if c in _peek.columns]
+        if not _avail:
+            st.error("CSV must include at least one of: **temp**, **loading**, **conc**.")
+        else:
+            st.caption("Choose which inputs the models should use.")
+            feature_selection = st.multiselect(
+                "Independent variables",
+                options=_avail,
+                default=_avail,
+                help="Pick one, two, or all three. Models and plots use only the checked set.",
+            )
     train_btn = st.button(
         "🔧 Train Models",
         type="primary",
-        disabled=(uploaded_file is None),
+        disabled=(
+            uploaded_file is None
+            or not _avail
+            or not feature_selection
+        ),
         use_container_width=True,
     )
 
@@ -79,24 +113,22 @@ def make_models():
     ]
 
 
-def linear_formula_md(model, target_name, label):
+def linear_formula_md(model, target_name, label, feature_names):
     c = model.coef_
     b = model.intercept_
+    terms = "".join(f" + {coef:.6f}·{fn}" for coef, fn in zip(c, feature_names))
     return (
         f"**{label} formula for {target_name}**\n\n"
         f"```\n"
-        f"{target_name} = {b:.6f}"
-        f" + {c[0]:.6f}·temp"
-        f" + {c[1]:.6f}·loading"
-        f" + {c[2]:.6f}·conc\n"
+        f"{target_name} = {b:.6f}{terms}\n"
         f"```"
     )
 
 
-def poly_formula_md(pipe, target_name, degree):
+def poly_formula_md(pipe, target_name, degree, feature_names):
     poly_step = pipe.named_steps["poly"]
     lin_step  = pipe.named_steps["lin"]
-    feat_names = poly_step.get_feature_names_out(["temp", "loading", "conc"])
+    feat_names = poly_step.get_feature_names_out(feature_names)
     coefs = lin_step.coef_
     inter = lin_step.intercept_
 
@@ -135,9 +167,18 @@ def parity_fig(X_train, X_test, y_train, y_test, model, target_name):
 # Handle Train button press
 if train_btn and uploaded_file is not None:
     import io as _io
+
+    _feat = canonical_feature_order(feature_selection)
+    if not _feat:
+        st.error("Select at least one independent variable.")
+        st.stop()
     uploaded_file.seek(0)
     _bytes = uploaded_file.read()
     _df = pd.read_csv(_io.BytesIO(_bytes))
+    _missing = [c for c in _feat if c not in _df.columns]
+    if _missing:
+        st.error(f"CSV is missing columns: {', '.join(_missing)}")
+        st.stop()
     if {"thcond", "spheat"}.issubset(_df.columns):
         _t1, _t2 = "thcond", "spheat"
     elif {"density", "visc"}.issubset(_df.columns):
@@ -148,6 +189,7 @@ if train_btn and uploaded_file is not None:
     st.session_state.csv_bytes = _bytes
     st.session_state.t1 = _t1
     st.session_state.t2 = _t2
+    st.session_state.feature_cols = tuple(_feat)
     st.session_state.trained = True
 
 if not st.session_state.trained:
@@ -156,15 +198,21 @@ if not st.session_state.trained:
     )
     st.stop()
 
+# Older sessions may lack feature_cols; default matches previous all-three behavior.
+if st.session_state.feature_cols is None:
+    st.session_state.feature_cols = tuple(ALL_FEATURES)
+
 target1_name = st.session_state.t1
 target2_name = st.session_state.t2
+feature_cols = list(st.session_state.feature_cols)
 
-# Train models (cached — only re-runs when CSV changes)
+# Train models (cached — re-runs when CSV or feature set changes)
 @st.cache_resource(show_spinner=False)
-def train_all(csv_bytes, t1, t2, version="v3"):
+def train_all(csv_bytes, t1, t2, feature_names_tuple, version="v4"):
     import io
     _df = pd.read_csv(io.BytesIO(csv_bytes))
-    _X  = _df[["temp", "loading", "conc"]]
+    _fn = list(feature_names_tuple)
+    _X  = _df[_fn]
     _y1 = _df[t1]
     _y2 = _df[t2]
     _Xtr1, _Xte1, _y1tr, _y1te = train_test_split(_X, _y1, test_size=0.2, random_state=42)
@@ -182,10 +230,17 @@ def train_all(csv_bytes, t1, t2, version="v3"):
 with st.spinner("Loading models…"):
     models1, models2, Xtrain1, Xtest1, y1_train, y1_test, \
         Xtrain2, Xtest2, y2_train, y2_test = train_all(
-            st.session_state.csv_bytes, target1_name, target2_name, version="v3"
+            st.session_state.csv_bytes,
+            target1_name,
+            target2_name,
+            tuple(feature_cols),
+            version="v4",
         )
 
-st.success(f"Models trained · Targets: **{target1_name}**, **{target2_name}**")
+st.success(
+    f"Models trained · Targets: **{target1_name}**, **{target2_name}** · "
+    f"Inputs: **{', '.join(feature_cols)}**"
+)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 all_tab_names = ["📊 Feature Analysis", "🔮 Predict"] + [name for name, _ in models1]
@@ -203,7 +258,7 @@ with feature_tab:
     full_df[target1_name] = y1_full.values
     full_df[target2_name] = y2_full.values
 
-    FEATURES = ["temp", "loading", "conc"]
+    FEATURES = feature_cols
 
     # ── 1. Correlation ────────────────────────────────────────────────────────
     st.subheader("1. Correlation (inputs → outputs)")
@@ -211,10 +266,12 @@ with feature_tab:
         "Pearson: linear relationship strength & direction.  "
         "Spearman: monotonic (non-linear) relationship."
     )
-    pearson  = full_df.corr(method="pearson" )[FEATURES].loc[[target1_name, target2_name]]
-    spearman = full_df.corr(method="spearman")[FEATURES].loc[[target1_name, target2_name]]
+    _corr_cols = FEATURES + [target1_name, target2_name]
+    pearson  = full_df[_corr_cols].corr(method="pearson" ).loc[[target1_name, target2_name], FEATURES]
+    spearman = full_df[_corr_cols].corr(method="spearman").loc[[target1_name, target2_name], FEATURES]
 
-    fig_corr, axes_corr = plt.subplots(1, 2, figsize=(10, 2.5))
+    _fig_w = max(10.0, 2.5 * len(FEATURES))
+    fig_corr, axes_corr = plt.subplots(1, 2, figsize=(_fig_w, 2.5))
     for ax, data, title in zip(
         axes_corr,
         [pearson, spearman],
@@ -223,8 +280,9 @@ with feature_tab:
         im = ax.imshow(data.values, cmap="RdBu", vmin=-1, vmax=1, aspect="auto")
         ax.set_xticks(range(len(FEATURES))); ax.set_xticklabels(FEATURES)
         ax.set_yticks(range(2)); ax.set_yticklabels([target1_name, target2_name])
+        n_feat = len(FEATURES)
         for r in range(2):
-            for c in range(len(FEATURES)):
+            for c in range(n_feat):
                 ax.text(c, r, f"{data.values[r, c]:.2f}", ha="center", va="center",
                         fontsize=11, color="white" if abs(data.values[r, c]) > 0.5 else "black")
         ax.set_title(f"{title} Correlation")
@@ -250,10 +308,11 @@ with feature_tab:
     imp1 = get_importances(models1)
     imp2 = get_importances(models2)
 
-    fig_imp, axes_imp = plt.subplots(1, 2, figsize=(12, 4))
+    _imp_w = max(12.0, 3.0 * len(FEATURES))
+    fig_imp, axes_imp = plt.subplots(1, 2, figsize=(_imp_w, 4))
     for ax, imp_df, tname in zip(axes_imp, [imp1, imp2], [target1_name, target2_name]):
         x = np.arange(len(FEATURES))
-        width = 0.18
+        width = min(0.18, 0.8 / max(len(imp_df), 1))
         for i, (idx, row) in enumerate(imp_df.iterrows()):
             ax.bar(x + i * width, row.values, width, label=idx)
         ax.set_xticks(x + width * (len(imp_df) - 1) / 2)
@@ -292,7 +351,7 @@ with feature_tab:
         st.markdown(f"**{tname}** — best tree model: *{bname}*")
         explainer = shap.TreeExplainer(bmodel)
         shap_vals = explainer.shap_values(X_te)
-        fig_shap, ax_shap = plt.subplots(figsize=(7, 3))
+        fig_shap, _ = plt.subplots(figsize=(7, 3))
         shap.summary_plot(
             shap_vals, X_te,
             feature_names=FEATURES,
@@ -310,14 +369,22 @@ with feature_tab:
 # ── Predict tab ─────────────────────────────────────────────────────────────────
 with predict_tab:
     st.subheader("New Data Point Prediction")
-    pc1, pc2, pc3 = st.columns(3)
-    p_temp    = pc1.number_input("Temperature",   value=55.0, format="%.4f", key="p_temp")
-    p_loading = pc2.number_input("Loading",       value=0.3,  format="%.4f", key="p_loading")
-    p_conc    = pc3.number_input("Concentration", value=0.8,  format="%.4f", key="p_conc")
+    _labels = {"temp": "Temperature", "loading": "Loading", "conc": "Concentration"}
+    _defaults = {"temp": 55.0, "loading": 0.3, "conc": 0.8}
+    pred_cols = st.columns(len(feature_cols))
+    pred_values = {}
+    for i, fn in enumerate(feature_cols):
+        with pred_cols[i]:
+            pred_values[fn] = st.number_input(
+                _labels.get(fn, fn),
+                value=float(_defaults[fn]),
+                format="%.4f",
+                key=f"p_{fn}",
+            )
     do_predict = st.button("🔮 Predict", type="primary", use_container_width=False)
 
     if do_predict:
-        newdata = pd.DataFrame({"temp": [p_temp], "loading": [p_loading], "conc": [p_conc]})
+        newdata = pd.DataFrame({k: [v] for k, v in pred_values.items()})
         rows = []
         for (name, m1), (_, m2) in zip(models1, models2):
             rows.append({
@@ -361,16 +428,16 @@ for tab, (name, m1), (_, m2) in zip(model_tabs, models1, models2):
         # ── Formula (interpretable models only) ──────────────────────────────
         if name == "Linear Regression":
             st.subheader("Formula")
-            st.markdown(linear_formula_md(m1, target1_name, "Linear"))
-            st.markdown(linear_formula_md(m2, target2_name, "Linear"))
+            st.markdown(linear_formula_md(m1, target1_name, "Linear", feature_cols))
+            st.markdown(linear_formula_md(m2, target2_name, "Linear", feature_cols))
         elif name == "Polynomial Regression deg2":
             st.subheader("Formula")
-            st.markdown(poly_formula_md(m1, target1_name, 2))
-            st.markdown(poly_formula_md(m2, target2_name, 2))
+            st.markdown(poly_formula_md(m1, target1_name, 2, feature_cols))
+            st.markdown(poly_formula_md(m2, target2_name, 2, feature_cols))
         elif name == "Ridge Regression":
             st.subheader("Formula")
-            st.markdown(linear_formula_md(m1, target1_name, "Ridge"))
-            st.markdown(linear_formula_md(m2, target2_name, "Ridge"))
+            st.markdown(linear_formula_md(m1, target1_name, "Ridge", feature_cols))
+            st.markdown(linear_formula_md(m2, target2_name, "Ridge", feature_cols))
 
         # ── Parity plots ──────────────────────────────────────────────────────
         st.subheader("Parity Plots")

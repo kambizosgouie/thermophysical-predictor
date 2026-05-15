@@ -8,9 +8,6 @@ Original file is located at
 """
 
 # ================== 0. Setup & imports ==================
-from google.colab import files
-uploaded = files.upload()  # upload your CSV
-
 import pandas as pd
 import numpy as np
 import math
@@ -29,41 +26,128 @@ from sklearn.neural_network import MLPRegressor
 from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 
+ALL_FEATURES = ["temp", "loading", "conc"]
+
+
+def load_csv_path():
+    """Return path to a CSV: Colab upload, or local file dialog."""
+    try:
+        from google.colab import files
+
+        uploaded = files.upload()
+        if not uploaded:
+            raise ValueError("No file uploaded.")
+        name = list(uploaded.keys())[0]
+        return name
+    except ImportError:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        path = filedialog.askopenfilename(
+            title="Select input CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        root.destroy()
+        if not path:
+            raise SystemExit("No file selected.")
+        return path
+
+
+def select_independent_params(available):
+    """
+    Let the user pick which independent variables to use (temp, loading, conc).
+    Returns a non-empty list of column names, in canonical order.
+    """
+    ordered = [c for c in ALL_FEATURES if c in available]
+    if not ordered:
+        raise ValueError(
+            "Data must include at least one of: temp, loading, conc. "
+            f"Found columns: {list(available)}"
+        )
+
+    try:
+        import tkinter as tk
+        import tkinter.messagebox as messagebox
+        from tkinter import ttk
+
+        root = tk.Tk()
+        root.title("Independent parameters")
+        root.resizable(False, False)
+
+        vars_ = {name: tk.BooleanVar(value=True) for name in ordered}
+        for name in ordered:
+            ttk.Checkbutton(root, text=name, variable=vars_[name]).pack(
+                anchor="w", padx=12, pady=4
+            )
+
+        chosen = []
+
+        def on_ok():
+            sel = [n for n in ordered if vars_[n].get()]
+            if not sel:
+                messagebox.showwarning(
+                    "Selection required",
+                    "Select at least one independent parameter.",
+                )
+                return
+            chosen.clear()
+            chosen.extend(sel)
+            root.destroy()
+
+        def on_cancel():
+            chosen.clear()
+            chosen.append(None)
+            root.destroy()
+
+        btn = ttk.Frame(root, padding=(0, 8, 0, 8))
+        btn.pack(fill="x")
+        ttk.Button(btn, text="OK", command=on_ok).pack(side="right", padx=6)
+        ttk.Button(btn, text="Cancel", command=on_cancel).pack(side="right")
+        root.protocol("WM_DELETE_WINDOW", on_cancel)
+        root.mainloop()
+
+        if not chosen or chosen[0] is None:
+            raise SystemExit("Cancelled feature selection.")
+        return chosen
+    except SystemExit:
+        raise
+    except Exception as exc:
+        import sys
+
+        if not sys.stdin.isatty():
+            print(
+                f"GUI not available ({exc!s}). Non-interactive run: using all of {ordered}."
+            )
+            return ordered
+        print(f"GUI not available ({exc!s}). Choose parameters in the console.")
+        print(f"Available: {', '.join(ordered)}")
+        line = input(
+            "Enter comma-separated names (e.g. temp,loading) or press Enter for all: "
+        ).strip()
+        if not line:
+            return ordered
+        picked = [x.strip() for x in line.split(",") if x.strip()]
+        bad = [p for p in picked if p not in ordered]
+        if bad:
+            raise ValueError(f"Unknown or unavailable columns: {bad}. Use: {ordered}")
+        if not picked:
+            return ordered
+        return [c for c in ordered if c in picked]
+
+
 # ================== 1. Configuration & auto‑detection ==================
-# Use the name of the file you just uploaded
-csv_name = list(uploaded.keys())[0]
-
-df = pd.read_csv(csv_name)
-
-# Try known pairs of target columns
-if {"thcond", "spheat"}.issubset(df.columns):
-    target1_name = "thcond"
-    target2_name = "spheat"
-elif {"density", "visc"}.issubset(df.columns):
-    target1_name = "density"
-    target2_name = "visc"
-else:
+def detect_targets(df):
+    if {"thcond", "spheat"}.issubset(df.columns):
+        return "thcond", "spheat"
+    if {"density", "visc"}.issubset(df.columns):
+        return "density", "visc"
     raise ValueError(
         "Could not find expected target columns. "
         "File must contain either (thcond, spheat) or (density, visc)."
     )
 
-print(f"Using file: {csv_name}")
-print(f"Targets detected: {target1_name}, {target2_name}")
-
-# ================== 2. Load data & splits ==================
-df = pd.read_csv(csv_name)
-
-X = df[["temp", "loading", "conc"]]
-y1 = df[target1_name]
-y2 = df[target2_name]
-
-Xtrain1, Xtest1, y1_train, y1_test = train_test_split(
-    X, y1, test_size=0.2, random_state=42
-)
-Xtrain2, Xtest2, y2_train, y2_test = train_test_split(
-    X, y2, test_size=0.2, random_state=42
-)
 
 # ================== 3. Helpers ==================
 def metrics(ytrue, ypred):
@@ -72,26 +156,27 @@ def metrics(ytrue, ypred):
     rmse = np.sqrt(mean_squared_error(ytrue, ypred))
     return r2, mae, rmse
 
+
 def print_metrics(name, target, ytrue, ypred):
     r2, mae, rmse = metrics(ytrue, ypred)
     print(f"{name:25s} - {target:8s} R2={r2:.4f}, MAE={mae:.4f}, RMSE={rmse:.4f}")
 
-def print_linear_like_formula(model, target_name, label):
+
+def print_linear_like_formula(model, target_name, label, feature_names):
     coef = model.coef_
     inter = model.intercept_
     print(f"{label} formula for {target_name}")
-    print(
-        f"{target_name} = {inter:.6f}"
-        f" + {coef[0]:.6f}*temp"
-        f" + {coef[1]:.6f}*loading"
-        f" + {coef[2]:.6f}*conc"
-    )
+    parts = [f"{inter:.6f}"]
+    for c, fn in zip(coef, feature_names):
+        parts.append(f" + {c:.6f}*{fn}")
+    print(f"{target_name} = " + "".join(parts))
     print()
 
-def print_poly_formula(pipe, target_name, degree):
+
+def print_poly_formula(pipe, target_name, degree, feature_names):
     polystep = pipe.named_steps["poly"]
     linstep = pipe.named_steps["lin"]
-    names = polystep.get_feature_names_out(["temp", "loading", "conc"])
+    names = polystep.get_feature_names_out(feature_names)
     coefs = linstep.coef_
     inter = linstep.intercept_
 
@@ -102,93 +187,89 @@ def print_poly_formula(pipe, target_name, degree):
     print(expr)
     print()
 
+
 def make_models(polydegree=2):
     return [
         ("Linear Regression", LinearRegression()),
-        (f"Polynomial Regression deg{polydegree}", Pipeline([
-            ("poly", PolynomialFeatures(degree=polydegree, include_bias=False)),
-            ("lin", LinearRegression()),
-        ])),
-        ("Random Forest", RandomForestRegressor(
-            n_estimators=200, random_state=42, n_jobs=-1)),
-        ("Gradient Boosting", GradientBoostingRegressor(
-            n_estimators=300, learning_rate=0.05, max_depth=3, random_state=42)),
-        ("XGBoost", XGBRegressor(
-            n_estimators=300, learning_rate=0.05, max_depth=4,
-            subsample=0.9, colsample_bytree=0.9, random_state=42, n_jobs=-1)),
+        (
+            f"Polynomial Regression deg{polydegree}",
+            Pipeline(
+                [
+                    ("poly", PolynomialFeatures(degree=polydegree, include_bias=False)),
+                    ("lin", LinearRegression()),
+                ]
+            ),
+        ),
+        (
+            "Random Forest",
+            RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1),
+        ),
+        (
+            "Gradient Boosting",
+            GradientBoostingRegressor(
+                n_estimators=300,
+                learning_rate=0.05,
+                max_depth=3,
+                random_state=42,
+            ),
+        ),
+        (
+            "XGBoost",
+            XGBRegressor(
+                n_estimators=300,
+                learning_rate=0.05,
+                max_depth=4,
+                subsample=0.9,
+                colsample_bytree=0.9,
+                random_state=42,
+                n_jobs=-1,
+            ),
+        ),
         ("Ridge Regression", Ridge(alpha=1.0)),
         ("KNN", KNeighborsRegressor(n_neighbors=5, weights="distance")),
-        ("Neural Network", TransformedTargetRegressor(
-            regressor=Pipeline([
-                ("scaler", StandardScaler()),
-                ("mlp", MLPRegressor(
-                    hidden_layer_sizes=(64, 32), activation="relu",
-                    alpha=0.05, learning_rate_init=0.001,
-                    max_iter=2000, random_state=42)),
-            ]),
-            transformer=StandardScaler(),
-        )),
-        ("CatBoost", CatBoostRegressor(
-            iterations=300, learning_rate=0.05, depth=6,
-            random_seed=42, verbose=0)),
+        (
+            "Neural Network",
+            TransformedTargetRegressor(
+                regressor=Pipeline(
+                    [
+                        ("scaler", StandardScaler()),
+                        (
+                            "mlp",
+                            MLPRegressor(
+                                hidden_layer_sizes=(64, 32),
+                                activation="relu",
+                                alpha=0.05,
+                                learning_rate_init=0.001,
+                                max_iter=2000,
+                                random_state=42,
+                            ),
+                        ),
+                    ]
+                ),
+                transformer=StandardScaler(),
+            ),
+        ),
+        (
+            "CatBoost",
+            CatBoostRegressor(
+                iterations=300,
+                learning_rate=0.05,
+                depth=6,
+                random_seed=42,
+                verbose=0,
+            ),
+        ),
     ]
 
-# ================== 4. Train models & metrics ==================
-models1 = make_models()
-models2 = make_models()
 
-print(f"Results for {target1_name}")
-for name, model in models1:
-    model.fit(Xtrain1, y1_train)
-    ypred = model.predict(Xtest1)
-    print_metrics(name, target1_name, y1_test, ypred)
+def example_new_row(feature_names):
+    defaults = {"temp": 55.0, "loading": 0.3, "conc": 0.8}
+    return pd.DataFrame({fn: [defaults[fn]] for fn in feature_names})
 
-print(f"\nResults for {target2_name}")
-for name, model in models2:
-    model.fit(Xtrain2, y2_train)
-    ypred = model.predict(Xtest2)
-    print_metrics(name, target2_name, y2_test, ypred)
 
-# ================== 5. Explicit formulas ==================
-# Linear
-lin1 = next(m for n, m in models1 if n == "Linear Regression")
-lin2 = next(m for n, m in models2 if n == "Linear Regression")
-print_linear_like_formula(lin1, target1_name, "Linear")
-print_linear_like_formula(lin2, target2_name, "Linear")
-
-# Polynomial degree 2
-poly_name = "Polynomial Regression deg2"
-poly1 = next(m for n, m in models1 if n == poly_name)
-poly2 = next(m for n, m in models2 if n == poly_name)
-print_poly_formula(poly1, target1_name, degree=2)
-print_poly_formula(poly2, target2_name, degree=2)
-
-# Ridge
-ridge1 = next(m for n, m in models1 if n == "Ridge Regression")
-ridge2 = next(m for n, m in models2 if n == "Ridge Regression")
-print_linear_like_formula(ridge1, target1_name, "Ridge")
-print_linear_like_formula(ridge2, target2_name, "Ridge")
-
-# ================== 6. Predictions for a new point ==================
-newdata = pd.DataFrame({
-    "temp": [55.0],
-    "loading": [0.3],
-    "conc": [0.8],
-})
-
-print(f"Predictions for {target1_name}")
-for name, model in models1:
-    pred = float(model.predict(newdata)[0])
-    print(f"{name:25s} - {target1_name} {pred:.4f}")
-
-print(f"\nPredictions for {target2_name}")
-for name, model in models2:
-    pred = float(model.predict(newdata)[0])
-    print(f"{name:25s} - {target2_name} {pred:.4f}")
-
-# ================== 7. Parity plots (test + full) ==================
-def plot_parity_for_target(X_train, X_test, y_train, y_test,
-                           models, target_name, subset="test"):
+def plot_parity_for_target(
+    X_train, X_test, y_train, y_test, models, target_name, subset="test"
+):
     if subset == "test":
         X_used = X_test
         y_used = y_test
@@ -222,14 +303,92 @@ def plot_parity_for_target(X_train, X_test, y_train, y_test,
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
 
-# target1
-plot_parity_for_target(Xtrain1, Xtest1, y1_train, y1_test,
-                       models1, target_name=target1_name, subset="test")
-plot_parity_for_target(Xtrain1, Xtest1, y1_train, y1_test,
-                       models1, target_name=target1_name, subset="full")
 
-# target2
-plot_parity_for_target(Xtrain2, Xtest2, y2_train, y2_test,
-                       models2, target_name=target2_name, subset="test")
-plot_parity_for_target(Xtrain2, Xtest2, y2_train, y2_test,
-                       models2, target_name=target2_name, subset="full")
+def run_pipeline(csv_name, feature_names):
+    df = pd.read_csv(csv_name)
+    missing = [c for c in feature_names if c not in df.columns]
+    if missing:
+        raise ValueError(f"CSV missing columns: {missing}")
+
+    target1_name, target2_name = detect_targets(df)
+
+    print(f"Using file: {csv_name}")
+    print(f"Targets detected: {target1_name}, {target2_name}")
+    print(f"Independent variables: {', '.join(feature_names)}")
+
+    X = df[feature_names]
+    y1 = df[target1_name]
+    y2 = df[target2_name]
+
+    Xtrain1, Xtest1, y1_train, y1_test = train_test_split(
+        X, y1, test_size=0.2, random_state=42
+    )
+    Xtrain2, Xtest2, y2_train, y2_test = train_test_split(
+        X, y2, test_size=0.2, random_state=42
+    )
+
+    models1 = make_models()
+    models2 = make_models()
+
+    print(f"\nResults for {target1_name}")
+    for name, model in models1:
+        model.fit(Xtrain1, y1_train)
+        ypred = model.predict(Xtest1)
+        print_metrics(name, target1_name, y1_test, ypred)
+
+    print(f"\nResults for {target2_name}")
+    for name, model in models2:
+        model.fit(Xtrain2, y2_train)
+        ypred = model.predict(Xtest2)
+        print_metrics(name, target2_name, y2_test, ypred)
+
+    lin1 = next(m for n, m in models1 if n == "Linear Regression")
+    lin2 = next(m for n, m in models2 if n == "Linear Regression")
+    print_linear_like_formula(lin1, target1_name, "Linear", feature_names)
+    print_linear_like_formula(lin2, target2_name, "Linear", feature_names)
+
+    poly_name = "Polynomial Regression deg2"
+    poly1 = next(m for n, m in models1 if n == poly_name)
+    poly2 = next(m for n, m in models2 if n == poly_name)
+    print_poly_formula(poly1, target1_name, degree=2, feature_names=feature_names)
+    print_poly_formula(poly2, target2_name, degree=2, feature_names=feature_names)
+
+    ridge1 = next(m for n, m in models1 if n == "Ridge Regression")
+    ridge2 = next(m for n, m in models2 if n == "Ridge Regression")
+    print_linear_like_formula(ridge1, target1_name, "Ridge", feature_names)
+    print_linear_like_formula(ridge2, target2_name, "Ridge", feature_names)
+
+    newdata = example_new_row(feature_names)
+    print(f"Predictions for {target1_name}")
+    for name, model in models1:
+        pred = float(model.predict(newdata)[0])
+        print(f"{name:25s} - {target1_name} {pred:.4f}")
+
+    print(f"\nPredictions for {target2_name}")
+    for name, model in models2:
+        pred = float(model.predict(newdata)[0])
+        print(f"{name:25s} - {target2_name} {pred:.4f}")
+
+    plot_parity_for_target(
+        Xtrain1, Xtest1, y1_train, y1_test, models1, target_name=target1_name, subset="test"
+    )
+    plot_parity_for_target(
+        Xtrain1, Xtest1, y1_train, y1_test, models1, target_name=target1_name, subset="full"
+    )
+    plot_parity_for_target(
+        Xtrain2, Xtest2, y2_train, y2_test, models2, target_name=target2_name, subset="test"
+    )
+    plot_parity_for_target(
+        Xtrain2, Xtest2, y2_train, y2_test, models2, target_name=target2_name, subset="full"
+    )
+
+
+def main():
+    csv_name = load_csv_path()
+    df_head = pd.read_csv(csv_name, nrows=1)
+    feature_names = select_independent_params(df_head.columns)
+    run_pipeline(csv_name, feature_names)
+
+
+if __name__ == "__main__":
+    main()
