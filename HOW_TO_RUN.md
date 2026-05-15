@@ -1,5 +1,7 @@
 # How to Run — Thermophysical Property Predictor
 
+For model descriptions, data format, and repository layout, see [README.md](README.md).
+
 ## Online Access
 
 The app is publicly available online — no installation required:
@@ -79,39 +81,49 @@ This step may take a few minutes on first run.
 
 ---
 
-### 6. Run the App
+### 6. Run the Streamlit App
 
 ```
 streamlit run app.py
 ```
 
-The app will start and automatically open in your default web browser at:
+The app will start and usually open in your default web browser at:
+
 ```
 http://localhost:8501
 ```
 
 ---
 
+### 7. (Optional) Run the Command-Line Training Script
+
+If you prefer a script that prints metrics and shows Matplotlib figures instead of the browser UI:
+
+```
+python 5d.py
+```
+
+- **Locally:** a file dialog asks for your CSV. A small window then asks which of `temp`, `loading`, and `conc` to use as inputs (or use the console prompt if no GUI is available).
+- **Google Colab:** the script uses Colab’s file upload when `google.colab` is available.
+
+Use the same CSV rules as the app (see [README.md](README.md)). CatBoost may write a `catboost_info` folder; you can delete it or leave it untracked (it is listed in `.gitignore` in this repo).
+
+---
+
 ## Using the App
 
-1. **Upload your CSV file** using the sidebar.  
-   The file must contain these columns:
+1. **Upload your CSV** in the sidebar (**CSV file**).  
+   Your file must include whichever inputs you plan to use from `temp`, `loading`, and `conc`, plus **either** the pair `thcond` and `spheat` **or** the pair `density` and `visc` (see [README.md](README.md) for the full column list).
 
-   | Column | Description |
-   |--------|-------------|
-   | `temp` | Temperature |
-   | `loading` | Particle loading |
-   | `conc` | Concentration |
-   | `thcond` + `spheat` | Thermal conductivity & specific heat *(Option A)* |
-   | `density` + `visc` | Density & viscosity *(Option B)* |
+2. Under **Independent variables**, choose one or more of `temp`, `loading`, and `conc`. Training and plots use only the columns you select.
 
-2. **Enter values** for a new data point (temperature, loading, concentration) in the sidebar.
+3. Click **Train Models** (🔧 Train Models). Wait until training finishes; a success message appears when models are ready.
 
-3. Click **Train & Predict** to train 9 regression models and see predictions.
+4. Open the **Predict** tab (🔮 Predict) in the main area. Enter values for each selected input, then click **Predict** (🔮 Predict) to see all nine models’ outputs in one table.
 
-4. Explore results in the tabs:
-   - **Feature Analysis** — correlation heatmap, feature importances, SHAP values
-   - **Per-model tabs** — R², MAE, RMSE metrics, formula (where applicable), parity plots, and prediction for your new point
+5. Explore other tabs:
+   - **Feature Analysis** — correlations, tree-based feature importances, SHAP summaries
+   - **One tab per model** — test-set R², MAE, RMSE; fitted formulas for linear / polynomial / ridge models; parity plots
 
 ---
 
@@ -123,6 +135,8 @@ http://localhost:8501
 | `Activate.ps1 cannot be loaded` (PowerShell) | Run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` |
 | Port 8501 already in use | Run: `streamlit run app.py --server.port 8502` |
 | Package install errors | Make sure the virtual environment is activated (see step 4) |
+| `5d.py` exits or skips the file / feature GUI | On a headless server, Tk may be unavailable; run from a desktop session or see the script’s non-interactive fallback (console prompt or all available inputs). |
+| Matplotlib windows do not appear (`5d.py`) | Run from an environment with a display (local desktop). On remote Linux, configure a display or save figures by adapting the script. |
 
 ---
 

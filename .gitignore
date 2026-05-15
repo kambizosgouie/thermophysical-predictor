@@ -19,6 +19,9 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
+# CatBoost training artifacts (created when CatBoost runs)
+catboost_info/
+
 # OS
 .DS_Store
 Thumbs.db

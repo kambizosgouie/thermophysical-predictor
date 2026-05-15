@@ -2,15 +2,19 @@
 
 A Streamlit-based machine learning web application for predicting thermophysical properties of nanofluids or similar fluid systems. Given experimental or simulation data with temperature, particle loading, and concentration as inputs, the app automatically trains **nine different regression models**, evaluates them against each other using standard metrics, and lets you instantly predict properties for new conditions—all through an interactive browser interface with no coding required.
 
+The same modelling stack is also available as a standalone Python script, [`5d.py`](5d.py), for local runs that print metrics, fitted formulas, and Matplotlib parity plots (useful for notebooks or batch workflows).
+
 ---
 
 ## Table of Contents
 
 1. [What This Application Does](#what-this-application-does)
-2. [Input Data Format](#input-data-format)
-3. [Machine Learning Models](#machine-learning-models)
-4. [User Interface Guide](#user-interface-guide)
-5. [Quick Start](#quick-start)
+2. [Repository Layout](#repository-layout)
+3. [Input Data Format](#input-data-format)
+4. [Machine Learning Models](#machine-learning-models)
+5. [User Interface Guide](#user-interface-guide)
+6. [Quick Start](#quick-start)
+7. [Command-line training script](#command-line-training-script)
 
 ---
 
@@ -33,6 +37,16 @@ This tool is designed for researchers and engineers working with thermophysical 
 3. The app splits the data (80% training / 20% testing), trains all nine models, and caches the results so navigation remains instant.
 4. You explore the results in the tabbed interface: feature analysis, a unified prediction table, and one dedicated tab per model.
 5. You enter new conditions and click **Predict** to get predictions from all nine models simultaneously.
+
+### Repository Layout
+
+| Path | Role |
+|------|------|
+| [`app.py`](app.py) | Streamlit UI: upload CSV, choose inputs, train, analyse, predict |
+| [`5d.py`](5d.py) | Script / Colab-style pipeline: file picker or Colab upload, optional feature selection, console output + parity figures |
+| [`requirements.txt`](requirements.txt) | Python dependencies for the app and `5d.py` |
+| [`HOW_TO_RUN.md`](HOW_TO_RUN.md) | Step-by-step local setup (venv, install, run) |
+| `5d.ipynb`, `4d_predict.ipynb` | Notebook variants of the workflow |
 
 ### Supported Property Pairs
 
@@ -66,6 +80,7 @@ Your CSV file must contain exactly these columns (column names are case-sensitiv
 | `visc` | Dynamic viscosity | Pa·s or mPa·s |
 
 - Include either the `thcond`+`spheat` pair **or** the `density`+`visc` pair — not required to have all four.
+- **Independent variables:** the CSV should include whichever of `temp`, `loading`, and `conc` you want to use. In the app, the sidebar **Independent variables** multiselect lets you train on any non-empty subset (for example, only `temp` and `loading`). The script `5d.py` offers the same choice via a small GUI or a console prompt when a GUI is not available.
 - Extra columns beyond those listed are ignored.
 - There is no hard minimum on row count, but at least 30–50 rows are recommended for meaningful model training.
 
@@ -83,6 +98,8 @@ temp,loading,conc,thcond,spheat
 ## Machine Learning Models
 
 All nine models listed below are trained for **each target variable** every time you click Train Models. They span a broad range of complexity — from simple interpretable linear models to powerful ensemble and deep learning approaches — so you can always find the right balance between accuracy and interpretability for your data.
+
+In both the Streamlit app and `5d.py`, models are created and tabulated in this order: **Linear → Polynomial (deg 2) → Random Forest → Gradient Boosting → XGBoost → Ridge → KNN → Neural Network → CatBoost**.
 
 ---
 
@@ -118,25 +135,7 @@ This model is well-suited for properties that curve with temperature or have int
 
 ---
 
-### 3. Ridge Regression
-
-**Type:** Parametric, interpretable, regularised  
-**Library:** scikit-learn `Ridge`
-
-Identical to Linear Regression but adds an L2 penalty on the magnitude of the coefficients:
-
-$$\text{Loss} = \sum (y_i - \hat{y}_i)^2 + \alpha \sum \beta_j^2$$
-
-The regularisation term $\alpha \sum \beta_j^2$ shrinks large coefficients toward zero, which reduces overfitting compared to plain OLS, especially when predictors are correlated. The fitted formula is displayed in the app.
-
-**Settings:**
-| Parameter | Value | Effect |
-|-----------|-------|--------|
-| `alpha` | 1.0 | Moderate regularisation strength |
-
----
-
-### 4. Random Forest
+### 3. Random Forest
 
 **Type:** Ensemble, tree-based, non-parametric  
 **Library:** scikit-learn `RandomForestRegressor`
@@ -154,7 +153,7 @@ All other parameters use scikit-learn defaults (`max_depth=None` — trees grown
 
 ---
 
-### 5. Gradient Boosting
+### 4. Gradient Boosting
 
 **Type:** Ensemble, tree-based, non-parametric  
 **Library:** scikit-learn `GradientBoostingRegressor`
@@ -171,7 +170,7 @@ Builds trees sequentially, where each new tree corrects the residual errors of a
 
 ---
 
-### 6. XGBoost
+### 5. XGBoost
 
 **Type:** Ensemble, tree-based, gradient boosted  
 **Library:** `xgboost.XGBRegressor`
@@ -188,6 +187,24 @@ An optimised and highly performant implementation of gradient boosting with seve
 | `colsample_bytree` | 0.9 | 90% of features sampled per tree |
 | `random_state` | 42 | Reproducibility |
 | `n_jobs` | -1 | Parallel training |
+
+---
+
+### 6. Ridge Regression
+
+**Type:** Parametric, interpretable, regularised  
+**Library:** scikit-learn `Ridge`
+
+Identical to Linear Regression but adds an L2 penalty on the magnitude of the coefficients:
+
+$$\text{Loss} = \sum (y_i - \hat{y}_i)^2 + \alpha \sum \beta_j^2$$
+
+The regularisation term $\alpha \sum \beta_j^2$ shrinks large coefficients toward zero, which reduces overfitting compared to plain OLS, especially when predictors are correlated. The fitted formula is displayed in the app.
+
+**Settings:**
+| Parameter | Value | Effect |
+|-----------|-------|--------|
+| `alpha` | 1.0 | Moderate regularisation strength |
 
 ---
 
@@ -253,10 +270,10 @@ A gradient boosting algorithm developed by Yandex that uses ordered boosting and
 |-------|------|:---:|:---:|-----------|
 | Linear Regression | Parametric | ✓ | ✓ | Baseline, fast, fully transparent |
 | Polynomial Reg. deg2 | Parametric | ✓ | ✓ | Captures curvature and interactions |
-| Ridge Regression | Parametric regularised | ✓ | ✓ | Better generalisation than OLS |
 | Random Forest | Ensemble / bagging | — | — | Robust, handles non-linearity |
 | Gradient Boosting | Ensemble / boosting | — | — | High accuracy on tabular data |
 | XGBoost | Optimised boosting | — | — | State-of-the-art for tabular data |
+| Ridge Regression | Parametric regularised | ✓ | ✓ | Better generalisation than OLS |
 | KNN | Instance-based | — | — | Captures local patterns |
 | Neural Network | Deep learning | — | — | Flexible function approximation |
 | CatBoost | Ordered boosting | — | — | Strong out-of-the-box performance |
@@ -275,6 +292,9 @@ The sidebar is visible at all times on the left side of the screen.
 
 **CSV File Uploader**  
 A file picker that accepts `.csv` files. Drag-and-drop or browse to select your data file. The file is read into memory but never written to disk.
+
+**Independent variables**  
+After upload, a multiselect lists whichever of `temp`, `loading`, and `conc` exist in the file. At least one must stay selected; training and plots use only that subset.
 
 **Train Models button**  
 Appears after a file is uploaded. Clicking it triggers the 80/20 data split and trains all 18 models (9 per target). A spinner is shown while training. Once complete, a green success banner appears in the main area confirming which targets were detected.
@@ -331,7 +351,7 @@ Runs all nine trained models on the entered values and displays a single results
 
 ### Tabs 3–11 — Individual Model Tabs
 
-Each of the nine models has its own dedicated tab. The tabs are labelled with the model name and appear in the order shown above. Each tab contains the following sections:
+Each of the nine models has its own dedicated tab. Tab labels follow the model order listed under [Machine Learning Models](#machine-learning-models) (Linear through CatBoost). Each tab contains the following sections:
 
 #### Metrics — test set (80/20 split)
 
@@ -391,3 +411,17 @@ The app is publicly available — no installation required:
    ```
 
 3. **Open your browser** at `http://localhost:8501`
+
+---
+
+## Command-line training script
+
+The entry point is [`5d.py`](5d.py). Use this when you prefer a terminal or IDE run instead of the Streamlit UI. Behaviour matches the core training logic in `app.py` (same targets, split, and model definitions): metrics on the test set, printed linear / polynomial / ridge formulas, example predictions, and Matplotlib parity grids (test set and full data) for each target.
+
+**How to run**
+
+1. Install dependencies (same as the app): `pip install -r requirements.txt`
+2. From the project root: `python 5d.py`
+3. Pick your CSV: on Google Colab the script uses `files.upload()`; locally it opens a file dialog. If Tk is unavailable and the session is non-interactive, behaviour is documented in the script (it falls back to using all available inputs among `temp`, `loading`, `conc`).
+
+CatBoost may create a `catboost_info/` directory during training. You can delete it after a run; this repository’s `.gitignore` ignores that folder so it is not committed by mistake.
