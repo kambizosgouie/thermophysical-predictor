@@ -27,6 +27,12 @@ from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 
 ALL_FEATURES = ["temp", "loading", "conc"]
+TARGET_UNITS = {
+    "thcond": "W/(m·K)",
+    "spheat": "J/(kg·K)",
+    "density": "kg/m³",
+    "visc": "Pa·s",
+}
 
 
 def load_csv_path():
@@ -157,9 +163,18 @@ def metrics(ytrue, ypred):
     return r2, mae, rmse
 
 
+def metric_label(metric_name, target_name):
+    unit = TARGET_UNITS.get(target_name)
+    return f"{metric_name} [{unit}]" if unit else metric_name
+
+
 def print_metrics(name, target, ytrue, ypred):
     r2, mae, rmse = metrics(ytrue, ypred)
-    print(f"{name:25s} - {target:8s} R2={r2:.4f}, MAE={mae:.4f}, RMSE={rmse:.4f}")
+    print(
+        f"{name:25s} - {target:8s} R2={r2:.4f}, "
+        f"{metric_label('MAE', target)}={mae:.4f}, "
+        f"{metric_label('RMSE', target)}={rmse:.4f}"
+    )
 
 
 def print_linear_like_formula(model, target_name, label, feature_names):
