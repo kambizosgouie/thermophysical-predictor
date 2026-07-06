@@ -73,24 +73,36 @@ source .venv/bin/activate
 ### 5. Install Dependencies
 
 ```
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 This installs all required packages (Streamlit, pandas, scikit-learn, XGBoost, CatBoost, SHAP, etc.).  
 This step may take a few minutes on first run.
+
+If `python` opens the Microsoft Store on Windows, use the virtual-environment interpreter directly instead:
+
+```
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
 ---
 
 ### 6. Run the Streamlit App
 
 ```
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 The app will start and usually open in your default web browser at:
 
 ```
 http://localhost:8501
+```
+
+If the Windows `python` alias is misconfigured, run:
+
+```
+.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
 ---
@@ -122,8 +134,8 @@ Use the same CSV rules as the app (see [README.md](README.md)). CatBoost may wri
 4. Open the **Predict** tab (🔮 Predict) in the main area. Enter values for each selected input, then click **Predict** (🔮 Predict) to see all nine models’ outputs in one table.
 
 5. Explore other tabs:
-   - **Feature Analysis** — correlations, tree-based feature importances, SHAP summaries
-   - **One tab per model** — test-set R², MAE, RMSE; fitted formulas for linear / polynomial / ridge models; parity plots
+  **Feature Analysis** — correlations, tree-based feature importances, SHAP summaries  
+  **One tab per model** — test-set R² plus `MAE [unit]` and `RMSE [unit]`; fitted formulas for linear / polynomial / ridge models; parity plots
 
 ---
 
@@ -132,8 +144,9 @@ Use the same CSV rules as the app (see [README.md](README.md)). CatBoost may wri
 | Problem | Solution |
 |---------|----------|
 | `python` not recognized | Reinstall Python and check "Add Python to PATH" |
+| `python` opens the Microsoft Store instead of your venv | Use `.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.venv\Scripts\python.exe -m streamlit run app.py` |
 | `Activate.ps1 cannot be loaded` (PowerShell) | Run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` |
-| Port 8501 already in use | Run: `streamlit run app.py --server.port 8502` |
+| Port 8501 already in use | Run: `python -m streamlit run app.py --server.port 8502` |
 | Package install errors | Make sure the virtual environment is activated (see step 4) |
 | `5d.py` exits or skips the file / feature GUI | On a headless server, Tk may be unavailable; run from a desktop session or see the script’s non-interactive fallback (console prompt or all available inputs). |
 | Matplotlib windows do not appear (`5d.py`) | Run from an environment with a display (local desktop). On remote Linux, configure a display or save figures by adapting the script. |

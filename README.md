@@ -360,8 +360,8 @@ A metrics table is shown for **each target variable** side by side, containing t
 | Metric | Full Name | Meaning |
 |--------|-----------|---------|
 | **R²** | Coefficient of Determination | Proportion of variance explained. 1.0 = perfect fit. Values < 0 mean the model is worse than predicting the mean. |
-| **MAE** | Mean Absolute Error | Average absolute difference between predicted and true values. Expressed in the same units as the target. |
-| **RMSE** | Root Mean Squared Error | Similar to MAE but penalises large errors more heavily due to squaring. Also in target units. |
+| **MAE** | Mean Absolute Error | Average absolute difference between predicted and true values. Expressed in the same units as the target, and shown in the UI as `MAE [unit]` (for example, `MAE [kg/m³]`). |
+| **RMSE** | Root Mean Squared Error | Similar to MAE but penalises large errors more heavily due to squaring. Also in target units, and shown in the UI as `RMSE [unit]` (for example, `RMSE [Pa·s]`). |
 
 #### Formula (Linear, Polynomial, and Ridge models only)
 
@@ -402,12 +402,12 @@ The app is publicly available — no installation required:
 
 1. **Install dependencies**
    ```
-   pip install -r requirements.txt
+   python -m pip install -r requirements.txt
    ```
 
 2. **Run the app**
    ```
-   streamlit run app.py
+   python -m streamlit run app.py
    ```
 
 3. **Open your browser** at `http://localhost:8501`
@@ -420,7 +420,7 @@ The entry point is [`5d.py`](5d.py). Use this when you prefer a terminal or IDE 
 
 **How to run**
 
-1. Install dependencies (same as the app): `pip install -r requirements.txt`
+1. Install dependencies (same as the app): `python -m pip install -r requirements.txt`
 2. From the project root: `python 5d.py`
 3. Pick your CSV: on Google Colab the script uses `files.upload()`; locally it opens a file dialog. If Tk is unavailable and the session is non-interactive, behaviour is documented in the script (it falls back to using all available inputs among `temp`, `loading`, `conc`).
 

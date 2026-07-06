@@ -23,11 +23,22 @@ st.set_page_config(page_title="Thermophysical Predictor", layout="wide")
 st.title("Thermophysical Property Predictor")
 
 ALL_FEATURES = ["temp", "loading", "conc"]
+TARGET_UNITS: dict[str, str] = {
+    "thcond": "W/(m·K)",
+    "spheat": "J/(kg·K)",
+    "density": "kg/m³",
+    "visc": "Pa·s",
+}
 
 
 def canonical_feature_order(selected):
     """Keep temp → loading → conc order regardless of multiselect UI order."""
     return [c for c in ALL_FEATURES if c in selected]
+
+
+def metric_label(metric_name: str, target_name: str) -> str:
+    unit = TARGET_UNITS.get(target_name)
+    return f"{metric_name} [{unit}]" if unit else metric_name
 
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -403,14 +414,21 @@ for tab, (name, m1), (_, m2) in zip(model_tabs, models1, models2):
         r2_1, mae_1, rmse_1 = get_metrics(y1_test, m1.predict(Xtest1))
         r2_2, mae_2, rmse_2 = get_metrics(y2_test, m2.predict(Xtest2))
 
+        X_full_m = pd.concat([Xtrain1, Xtest1])
+        y1_full_m = pd.concat([y1_train, y1_test])
+        y2_full_m = pd.concat([y2_train, y2_test])
+        r2_1_full = r2_score(y1_full_m, m1.predict(X_full_m))
+        r2_2_full = r2_score(y2_full_m, m2.predict(X_full_m))
+
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"**{target1_name}**")
             st.dataframe(
                 pd.DataFrame({
-                    "R²":   [f"{r2_1:.4f}"],
-                    "MAE":  [f"{mae_1:.6f}"],
-                    "RMSE": [f"{rmse_1:.6f}"],
+                    "R² (test)":  [f"{r2_1:.4f}"],
+                    "R² (all)":   [f"{r2_1_full:.4f}"],
+                    metric_label("MAE", target1_name):  [f"{mae_1:.6f}"],
+                    metric_label("RMSE", target1_name): [f"{rmse_1:.6f}"],
                 }),
                 hide_index=True, use_container_width=True,
             )
@@ -418,9 +436,10 @@ for tab, (name, m1), (_, m2) in zip(model_tabs, models1, models2):
             st.markdown(f"**{target2_name}**")
             st.dataframe(
                 pd.DataFrame({
-                    "R²":   [f"{r2_2:.4f}"],
-                    "MAE":  [f"{mae_2:.6f}"],
-                    "RMSE": [f"{rmse_2:.6f}"],
+                    "R² (test)":  [f"{r2_2:.4f}"],
+                    "R² (all)":   [f"{r2_2_full:.4f}"],
+                    metric_label("MAE", target2_name):  [f"{mae_2:.6f}"],
+                    metric_label("RMSE", target2_name): [f"{rmse_2:.6f}"],
                 }),
                 hide_index=True, use_container_width=True,
             )
