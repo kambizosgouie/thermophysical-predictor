@@ -2,7 +2,7 @@
 
 A Streamlit-based machine learning web application for predicting thermophysical properties of nanofluids or similar fluid systems. Given experimental or simulation data with temperature, particle loading, and concentration as inputs, the app automatically trains **nine different regression models**, evaluates them against each other using standard metrics, and lets you instantly predict properties for new conditions—all through an interactive browser interface with no coding required.
 
-The same modelling stack is also available as a standalone Python script, [`5d.py`](5d.py), for local runs that print metrics, fitted formulas, and Matplotlib parity plots (useful for notebooks or batch workflows).
+The same modelling stack is also available as a standalone Python CLI script, [`5d.py`](5d.py), for local runs that print metrics, fitted formulas, and Matplotlib parity plots. It can be used from the terminal, from automation scripts, or from notebooks for batch workflows.
 
 ---
 
@@ -43,8 +43,8 @@ This tool is designed for researchers and engineers working with thermophysical 
 | Path | Role |
 |------|------|
 | [`app.py`](app.py) | Streamlit UI: upload CSV, choose inputs, train, analyse, predict |
-| [`5d.py`](5d.py) | Script / Colab-style pipeline: file picker or Colab upload, optional feature selection, console output + parity figures |
-| [`requirements.txt`](requirements.txt) | Python dependencies for the app and `5d.py` |
+| [`5d.py`](5d.py) | Standalone Python CLI workflow: load CSV, choose features, train models, print metrics, save parity plots |
+| [`requirements.txt`](requirements.txt) | Python dependencies for the app, CLI script, and notebook workflows |
 | [`HOW_TO_RUN.md`](HOW_TO_RUN.md) | Step-by-step local setup (venv, install, run) |
 | `5d.ipynb`, `4d_predict.ipynb` | Notebook variants of the workflow |
 
@@ -80,7 +80,7 @@ Your CSV file must contain exactly these columns (column names are case-sensitiv
 | `visc` | Dynamic viscosity | Pa·s or mPa·s |
 
 - Include either the `thcond`+`spheat` pair **or** the `density`+`visc` pair — not required to have all four.
-- **Independent variables:** the CSV should include whichever of `temp`, `loading`, and `conc` you want to use. In the app, the sidebar **Independent variables** multiselect lets you train on any non-empty subset (for example, only `temp` and `loading`). The script `5d.py` offers the same choice via a small GUI or a console prompt when a GUI is not available.
+- **Independent variables:** the CSV should include whichever of `temp`, `loading`, and `conc` you want to use. In the app, the sidebar **Independent variables** multiselect lets you train on any non-empty subset (for example, only `temp` and `loading`). The CLI script `5d.py` accepts feature names directly through `--features`, or it prompts you if you run it without arguments.
 - Extra columns beyond those listed are ignored.
 - There is no hard minimum on row count, but at least 30–50 rows are recommended for meaningful model training.
 
@@ -92,6 +92,40 @@ temp,loading,conc,thcond,spheat
 55,0.02,0.50,0.649,4168
 ...
 ```
+
+---
+
+## Quick Start
+
+1. Create and activate a virtual environment.
+2. Install the dependencies:
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
+3. Start the Streamlit app:
+   ```bash
+   python -m streamlit run app.py
+   ```
+4. Or run the Python CLI training script:
+   ```bash
+   python 5d.py --csv "drive-download-20260517T193729Z-3-001/data_th_sp.csv" --features temp loading conc --no-plots
+   ```
+
+The CLI script also saves parity plots to an `outputs` folder unless you disable plotting with `--no-plots`.
+
+---
+
+## Command-line training script
+
+The standalone Python script in [5d.py](5d.py) trains the same regression stack without the browser UI. It accepts the following options:
+
+```bash
+python 5d.py --csv path/to/data.csv --features temp loading conc
+python 5d.py --csv path/to/data.csv --features temp loading conc --no-plots
+python 5d.py --csv path/to/data.csv --features temp loading conc --output-dir outputs
+```
+
+If you omit `--csv` or `--features`, the script prompts for them interactively. It automatically detects whether your file contains the thermal-property pair (`thcond`, `spheat`) or the transport-property pair (`density`, `visc`).
 
 ---
 

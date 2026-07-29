@@ -109,14 +109,20 @@ If the Windows `python` alias is misconfigured, run:
 
 ### 7. (Optional) Run the Command-Line Training Script
 
-If you prefer a script that prints metrics and shows Matplotlib figures instead of the browser UI:
+If you prefer a script that prints metrics and saves Matplotlib figures instead of using the browser UI:
 
-```
-python 5d.py
+```bash
+python 5d.py --csv "path/to/your_data.csv" --features temp loading conc --no-plots
 ```
 
-- **Locally:** a file dialog asks for your CSV. A small window then asks which of `temp`, `loading`, and `conc` to use as inputs (or use the console prompt if no GUI is available).
-- **Google Colab:** the script uses Colab’s file upload when `google.colab` is available.
+Useful variants:
+
+```bash
+python 5d.py --csv "path/to/your_data.csv" --features temp loading conc
+python 5d.py --csv "path/to/your_data.csv" --features temp loading conc --output-dir outputs
+```
+
+If you omit `--csv` or `--features`, the script prompts for them interactively. It automatically detects whether your file contains the thermal-property pair (`thcond`, `spheat`) or the transport-property pair (`density`, `visc`).
 
 Use the same CSV rules as the app (see [README.md](README.md)). CatBoost may write a `catboost_info` folder; you can delete it or leave it untracked (it is listed in `.gitignore` in this repo).
 
