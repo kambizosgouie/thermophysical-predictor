@@ -8,13 +8,16 @@ Original file is located at
 """
 
 # ================== 0. Setup & imports ==================
+import argparse
+import math
+import sys
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
-import math
 import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
@@ -26,6 +29,8 @@ from sklearn.neural_network import MLPRegressor
 from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 
+from metrics_utils import compute_regression_metrics
+
 ALL_FEATURES = ["temp", "loading", "conc"]
 TARGET_UNITS = {
     "thcond": "W/(m·K)",
@@ -35,37 +40,50 @@ TARGET_UNITS = {
 }
 
 
-def load_csv_path():
-    """Return path to a CSV: Colab upload, or local file dialog."""
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Train and compare regression models for thermophysical properties."
+    )
+    parser.add_argument("--csv", help="Path to the input CSV file.")
+    parser.add_argument(
+        "--features",
+        nargs="+",
+        help="Feature columns to use (for example: temp loading conc).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="outputs",
+        help="Directory where parity plots will be saved (default: outputs).",
+    )
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help="Skip parity plot generation.",
+    )
+    return parser.parse_args()
+
+
+def load_csv_path(csv_path=None):
+    """Return the path to a CSV file, either from CLI input or a prompt."""
+    if csv_path:
+        return csv_path
+
     try:
         from google.colab import files
 
         uploaded = files.upload()
         if not uploaded:
             raise ValueError("No file uploaded.")
-        name = list(uploaded.keys())[0]
-        return name
-    except ImportError:
-        import tkinter as tk
-        from tkinter import filedialog
-
-        root = tk.Tk()
-        root.withdraw()
-        path = filedialog.askopenfilename(
-            title="Select input CSV",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-        root.destroy()
-        if not path:
-            raise SystemExit("No file selected.")
-        return path
+        return list(uploaded.keys())[0]
+    except Exception:
+        prompt = input("Enter the CSV path: ").strip()
+        if not prompt:
+            raise SystemExit("No CSV path provided.")
+        return prompt
 
 
-def select_independent_params(available):
-    """
-    Let the user pick which independent variables to use (temp, loading, conc).
-    Returns a non-empty list of column names, in canonical order.
-    """
+def select_independent_params(available, requested=None):
+    """Return a non-empty list of feature columns in canonical order."""
     ordered = [c for c in ALL_FEATURES if c in available]
     if not ordered:
         raise ValueError(
@@ -73,74 +91,26 @@ def select_independent_params(available):
             f"Found columns: {list(available)}"
         )
 
-    try:
-        import tkinter as tk
-        import tkinter.messagebox as messagebox
-        from tkinter import ttk
-
-        root = tk.Tk()
-        root.title("Independent parameters")
-        root.resizable(False, False)
-
-        vars_ = {name: tk.BooleanVar(value=True) for name in ordered}
-        for name in ordered:
-            ttk.Checkbutton(root, text=name, variable=vars_[name]).pack(
-                anchor="w", padx=12, pady=4
-            )
-
-        chosen = []
-
-        def on_ok():
-            sel = [n for n in ordered if vars_[n].get()]
-            if not sel:
-                messagebox.showwarning(
-                    "Selection required",
-                    "Select at least one independent parameter.",
-                )
-                return
-            chosen.clear()
-            chosen.extend(sel)
-            root.destroy()
-
-        def on_cancel():
-            chosen.clear()
-            chosen.append(None)
-            root.destroy()
-
-        btn = ttk.Frame(root, padding=(0, 8, 0, 8))
-        btn.pack(fill="x")
-        ttk.Button(btn, text="OK", command=on_ok).pack(side="right", padx=6)
-        ttk.Button(btn, text="Cancel", command=on_cancel).pack(side="right")
-        root.protocol("WM_DELETE_WINDOW", on_cancel)
-        root.mainloop()
-
-        if not chosen or chosen[0] is None:
-            raise SystemExit("Cancelled feature selection.")
-        return chosen
-    except SystemExit:
-        raise
-    except Exception as exc:
-        import sys
-
-        if not sys.stdin.isatty():
-            print(
-                f"GUI not available ({exc!s}). Non-interactive run: using all of {ordered}."
-            )
-            return ordered
-        print(f"GUI not available ({exc!s}). Choose parameters in the console.")
-        print(f"Available: {', '.join(ordered)}")
-        line = input(
-            "Enter comma-separated names (e.g. temp,loading) or press Enter for all: "
-        ).strip()
-        if not line:
-            return ordered
-        picked = [x.strip() for x in line.split(",") if x.strip()]
-        bad = [p for p in picked if p not in ordered]
-        if bad:
-            raise ValueError(f"Unknown or unavailable columns: {bad}. Use: {ordered}")
+    if requested:
+        picked = [c for c in requested if c in ordered]
         if not picked:
-            return ordered
-        return [c for c in ordered if c in picked]
+            raise ValueError(f"None of the requested features are available: {requested}")
+        return picked
+
+    print(f"Available features: {', '.join(ordered)}")
+    line = input(
+        "Enter feature names separated by commas (default: all available): "
+    ).strip()
+    if not line:
+        return ordered
+
+    picked = [name.strip() for name in line.split(",") if name.strip()]
+    bad = [name for name in picked if name not in ordered]
+    if bad:
+        raise ValueError(f"Unknown or unavailable columns: {bad}. Use: {ordered}")
+    if not picked:
+        return ordered
+    return [c for c in ordered if c in picked]
 
 
 # ================== 1. Configuration & auto‑detection ==================
@@ -157,10 +127,15 @@ def detect_targets(df):
 
 # ================== 3. Helpers ==================
 def metrics(ytrue, ypred):
-    r2 = r2_score(ytrue, ypred)
-    mae = mean_absolute_error(ytrue, ypred)
-    rmse = np.sqrt(mean_squared_error(ytrue, ypred))
-    return r2, mae, rmse
+    metrics_dict = compute_regression_metrics(ytrue, ypred)
+    return (
+        metrics_dict["r2"],
+        metrics_dict["mae"],
+        metrics_dict["rmse"],
+        metrics_dict["mape"],
+        metrics_dict["aad"],
+        metrics_dict["mae_pct_of_mean"],
+    )
 
 
 def metric_label(metric_name, target_name):
@@ -168,12 +143,15 @@ def metric_label(metric_name, target_name):
     return f"{metric_name} [{unit}]" if unit else metric_name
 
 
-def print_metrics(name, target, ytrue, ypred):
-    r2, mae, rmse = metrics(ytrue, ypred)
+def print_metrics(name, target, ytrue, ypred, dataset_label="test"):
+    r2, mae, rmse, mape, aad, mae_pct_mean = metrics(ytrue, ypred)
     print(
-        f"{name:25s} - {target:8s} R2={r2:.4f}, "
+        f"{name:25s} - {target:8s} [{dataset_label}] R2={r2:.4f}, "
         f"{metric_label('MAE', target)}={mae:.4f}, "
-        f"{metric_label('RMSE', target)}={rmse:.4f}"
+        f"{metric_label('RMSE', target)}={rmse:.4f}, "
+        f"MAPE (%)={mape:.4f}, "
+        f"AAD (%)={aad:.4f}, "
+        f"MAE% of Mean={mae_pct_mean:.4f}"
     )
 
 
@@ -283,7 +261,15 @@ def example_new_row(feature_names):
 
 
 def plot_parity_for_target(
-    X_train, X_test, y_train, y_test, models, target_name, subset="test"
+    X_train,
+    X_test,
+    y_train,
+    y_test,
+    models,
+    target_name,
+    subset="test",
+    output_dir=None,
+    show_plot=True,
 ):
     if subset == "test":
         X_used = X_test
@@ -316,10 +302,18 @@ def plot_parity_for_target(
         plt.grid(True, alpha=0.3)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.show()
+    if output_dir is not None:
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{target_name}_{subset}_parity.png"
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        print(f"Saved parity plot: {out_path}")
+    if show_plot:
+        plt.show()
+    plt.close()
 
 
-def run_pipeline(csv_name, feature_names):
+def run_pipeline(csv_name, feature_names, output_dir="outputs", show_plots=True):
     df = pd.read_csv(csv_name)
     missing = [c for c in feature_names if c not in df.columns]
     if missing:
@@ -349,13 +343,17 @@ def run_pipeline(csv_name, feature_names):
     for name, model in models1:
         model.fit(Xtrain1, y1_train)
         ypred = model.predict(Xtest1)
-        print_metrics(name, target1_name, y1_test, ypred)
+        print_metrics(name, target1_name, y1_test, ypred, dataset_label="test")
+        ypred_full = model.predict(pd.concat([Xtrain1, Xtest1], axis=0))
+        print_metrics(name, target1_name, pd.concat([y1_train, y1_test], axis=0), ypred_full, dataset_label="all")
 
     print(f"\nResults for {target2_name}")
     for name, model in models2:
         model.fit(Xtrain2, y2_train)
         ypred = model.predict(Xtest2)
-        print_metrics(name, target2_name, y2_test, ypred)
+        print_metrics(name, target2_name, y2_test, ypred, dataset_label="test")
+        ypred_full = model.predict(pd.concat([Xtrain2, Xtest2], axis=0))
+        print_metrics(name, target2_name, pd.concat([y2_train, y2_test], axis=0), ypred_full, dataset_label="all")
 
     lin1 = next(m for n, m in models1 if n == "Linear Regression")
     lin2 = next(m for n, m in models2 if n == "Linear Regression")
@@ -384,25 +382,27 @@ def run_pipeline(csv_name, feature_names):
         pred = float(model.predict(newdata)[0])
         print(f"{name:25s} - {target2_name} {pred:.4f}")
 
-    plot_parity_for_target(
-        Xtrain1, Xtest1, y1_train, y1_test, models1, target_name=target1_name, subset="test"
-    )
-    plot_parity_for_target(
-        Xtrain1, Xtest1, y1_train, y1_test, models1, target_name=target1_name, subset="full"
-    )
-    plot_parity_for_target(
-        Xtrain2, Xtest2, y2_train, y2_test, models2, target_name=target2_name, subset="test"
-    )
-    plot_parity_for_target(
-        Xtrain2, Xtest2, y2_train, y2_test, models2, target_name=target2_name, subset="full"
-    )
+    if show_plots:
+        plot_parity_for_target(
+            Xtrain1, Xtest1, y1_train, y1_test, models1, target_name=target1_name, subset="test", output_dir=output_dir
+        )
+        plot_parity_for_target(
+            Xtrain1, Xtest1, y1_train, y1_test, models1, target_name=target1_name, subset="full", output_dir=output_dir
+        )
+        plot_parity_for_target(
+            Xtrain2, Xtest2, y2_train, y2_test, models2, target_name=target2_name, subset="test", output_dir=output_dir
+        )
+        plot_parity_for_target(
+            Xtrain2, Xtest2, y2_train, y2_test, models2, target_name=target2_name, subset="full", output_dir=output_dir
+        )
 
 
 def main():
-    csv_name = load_csv_path()
+    args = parse_args()
+    csv_name = load_csv_path(args.csv)
     df_head = pd.read_csv(csv_name, nrows=1)
-    feature_names = select_independent_params(df_head.columns)
-    run_pipeline(csv_name, feature_names)
+    feature_names = select_independent_params(df_head.columns, args.features)
+    run_pipeline(csv_name, feature_names, output_dir=args.output_dir, show_plots=not args.no_plots)
 
 
 if __name__ == "__main__":
