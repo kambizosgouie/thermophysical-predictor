@@ -6,7 +6,6 @@ import math
 import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.pipeline import Pipeline
@@ -17,6 +16,8 @@ from sklearn.neural_network import MLPRegressor
 from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 import shap
+
+from metrics_utils import compute_regression_metrics
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Thermophysical Predictor", layout="wide")
@@ -85,11 +86,8 @@ with st.sidebar:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def get_metrics(ytrue, ypred):
-    return (
-        r2_score(ytrue, ypred),
-        mean_absolute_error(ytrue, ypred),
-        np.sqrt(mean_squared_error(ytrue, ypred)),
-    )
+    metrics = compute_regression_metrics(ytrue, ypred)
+    return metrics["r2"], metrics["mae"], metrics["rmse"], metrics["mape"], metrics["aad"], metrics["mae_pct_of_mean"]
 
 
 def make_models():
@@ -347,7 +345,7 @@ with feature_tab:
         best_name, best_model, best_r2 = None, None, -np.inf
         for nm, mdl in models_list:
             if nm in tree_names:
-                r2 = r2_score(y_te, mdl.predict(X_te))
+                r2 = compute_regression_metrics(y_te, mdl.predict(X_te))["r2"]
                 if r2 > best_r2:
                     best_r2, best_name, best_model = r2, nm, mdl
         return best_name, best_model
@@ -411,38 +409,76 @@ for tab, (name, m1), (_, m2) in zip(model_tabs, models1, models2):
 
         # ── Metrics ──────────────────────────────────────────────────────────
         st.subheader("Metrics — test set (80/20 split)")
-        r2_1, mae_1, rmse_1 = get_metrics(y1_test, m1.predict(Xtest1))
-        r2_2, mae_2, rmse_2 = get_metrics(y2_test, m2.predict(Xtest2))
+        r2_1, mae_1, rmse_1, mape_1, aad_1, mae_pct_mean_1 = get_metrics(y1_test, m1.predict(Xtest1))
+        r2_2, mae_2, rmse_2, mape_2, aad_2, mae_pct_mean_2 = get_metrics(y2_test, m2.predict(Xtest2))
 
         X_full_m = pd.concat([Xtrain1, Xtest1])
         y1_full_m = pd.concat([y1_train, y1_test])
         y2_full_m = pd.concat([y2_train, y2_test])
-        r2_1_full = r2_score(y1_full_m, m1.predict(X_full_m))
-        r2_2_full = r2_score(y2_full_m, m2.predict(X_full_m))
+        full_metrics_1 = compute_regression_metrics(y1_full_m, m1.predict(X_full_m))
+        full_metrics_2 = compute_regression_metrics(y2_full_m, m2.predict(X_full_m))
+        r2_1_full = full_metrics_1["r2"]
+        r2_2_full = full_metrics_2["r2"]
 
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"**{target1_name}**")
-            st.dataframe(
-                pd.DataFrame({
-                    "R² (test)":  [f"{r2_1:.4f}"],
-                    "R² (all)":   [f"{r2_1_full:.4f}"],
-                    metric_label("MAE", target1_name):  [f"{mae_1:.6f}"],
-                    metric_label("RMSE", target1_name): [f"{rmse_1:.6f}"],
-                }),
-                hide_index=True, use_container_width=True,
-            )
+            metrics_df_1 = pd.DataFrame({
+                "Metric": [
+                    "R² (test)",
+                    "R² (all)",
+                    metric_label("MAE", target1_name),
+                    metric_label("RMSE", target1_name),
+                    f"MAPE (%) ({target1_name}, test)",
+                    f"MAPE (%) ({target1_name}, all)",
+                    f"AAD (%) ({target1_name}, test)",
+                    f"AAD (%) ({target1_name}, all)",
+                    f"MAE% of Mean ({target1_name}, test)",
+                    f"MAE% of Mean ({target1_name}, all)",
+                ],
+                "Value": [
+                    f"{r2_1:.4f}",
+                    f"{r2_1_full:.4f}",
+                    f"{mae_1:.6f}",
+                    f"{rmse_1:.6f}",
+                    f"{mape_1:.6f}",
+                    f"{full_metrics_1['mape']:.6f}",
+                    f"{aad_1:.6f}",
+                    f"{full_metrics_1['aad']:.6f}",
+                    f"{mae_pct_mean_1:.6f}",
+                    f"{full_metrics_1['mae_pct_of_mean']:.6f}",
+                ],
+            })
+            st.dataframe(metrics_df_1, hide_index=True, use_container_width=True)
         with col2:
             st.markdown(f"**{target2_name}**")
-            st.dataframe(
-                pd.DataFrame({
-                    "R² (test)":  [f"{r2_2:.4f}"],
-                    "R² (all)":   [f"{r2_2_full:.4f}"],
-                    metric_label("MAE", target2_name):  [f"{mae_2:.6f}"],
-                    metric_label("RMSE", target2_name): [f"{rmse_2:.6f}"],
-                }),
-                hide_index=True, use_container_width=True,
-            )
+            metrics_df_2 = pd.DataFrame({
+                "Metric": [
+                    "R² (test)",
+                    "R² (all)",
+                    metric_label("MAE", target2_name),
+                    metric_label("RMSE", target2_name),
+                    f"MAPE (%) ({target2_name}, test)",
+                    f"MAPE (%) ({target2_name}, all)",
+                    f"AAD (%) ({target2_name}, test)",
+                    f"AAD (%) ({target2_name}, all)",
+                    f"MAE% of Mean ({target2_name}, test)",
+                    f"MAE% of Mean ({target2_name}, all)",
+                ],
+                "Value": [
+                    f"{r2_2:.4f}",
+                    f"{r2_2_full:.4f}",
+                    f"{mae_2:.6f}",
+                    f"{rmse_2:.6f}",
+                    f"{mape_2:.6f}",
+                    f"{full_metrics_2['mape']:.6f}",
+                    f"{aad_2:.6f}",
+                    f"{full_metrics_2['aad']:.6f}",
+                    f"{mae_pct_mean_2:.6f}",
+                    f"{full_metrics_2['mae_pct_of_mean']:.6f}",
+                ],
+            })
+            st.dataframe(metrics_df_2, hide_index=True, use_container_width=True)
 
         # ── Formula (interpretable models only) ──────────────────────────────
         if name == "Linear Regression":
