@@ -77,7 +77,7 @@ Your CSV file must contain exactly these columns (column names are case-sensitiv
 | `thcond` | Thermal conductivity | W/(m·K) |
 | `spheat` | Specific heat capacity | J/(kg·K) |
 | `density` | Density | kg/m³ |
-| `visc` | Dynamic viscosity | Pa·s or mPa·s |
+| `visc` | Dynamic viscosity | mPa·s |
 
 - Include either the `thcond`+`spheat` pair **or** the `density`+`visc` pair — not required to have all four.
 - **Independent variables:** the CSV should include whichever of `temp`, `loading`, and `conc` you want to use. In the app, the sidebar **Independent variables** multiselect lets you train on any non-empty subset (for example, only `temp` and `loading`). The CLI script `5d.py` accepts feature names directly through `--features`, or it prompts you if you run it without arguments.
@@ -395,7 +395,7 @@ A metrics table is shown for **each target variable** side by side, containing t
 |--------|-----------|---------|
 | **R²** | Coefficient of Determination | Proportion of variance explained. 1.0 = perfect fit. Values < 0 mean the model is worse than predicting the mean. |
 | **MAE** | Mean Absolute Error | Average absolute difference between predicted and true values. Expressed in the same units as the target, and shown in the UI as `MAE [unit]` (for example, `MAE [kg/m³]`). |
-| **RMSE** | Root Mean Squared Error | Similar to MAE but penalises large errors more heavily due to squaring. Also in target units, and shown in the UI as `RMSE [unit]` (for example, `RMSE [Pa·s]`). |
+| **RMSE** | Root Mean Squared Error | Similar to MAE but penalises large errors more heavily due to squaring. Also in target units, and shown in the UI as `RMSE [unit]` (for example, `RMSE [mPa·s]`). |
 
 #### Formula (Linear, Polynomial, and Ridge models only)
 

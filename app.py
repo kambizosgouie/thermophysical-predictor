@@ -28,7 +28,7 @@ TARGET_UNITS: dict[str, str] = {
     "thcond": "W/(m·K)",
     "spheat": "J/(kg·K)",
     "density": "kg/m³",
-    "visc": "Pa·s",
+    "visc": "mPa·s",
 }
 
 
