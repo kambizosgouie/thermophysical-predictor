@@ -90,7 +90,7 @@ If `python` opens the Microsoft Store on Windows, use the virtual-environment in
 ### 6. Run the Streamlit App
 
 ```
-python -m streamlit run app.py
+python -m streamlit run 6d.py
 ```
 
 The app will start and usually open in your default web browser at:
@@ -102,7 +102,7 @@ http://localhost:8501
 If the Windows `python` alias is misconfigured, run:
 
 ```
-.venv\Scripts\python.exe -m streamlit run app.py
+.venv\Scripts\python.exe -m streamlit run 6d.py
 ```
 
 ---
@@ -130,12 +130,11 @@ Use the same CSV rules as the app (see [README.md](README.md)). CatBoost may wri
 
 ## Using the App
 
-1. **Upload your CSV** in the sidebar (**CSV file**).  
-   Your file must include whichever inputs you plan to use from `temp`, `loading`, and `conc`, plus **either** the pair `thcond` and `spheat` **or** the pair `density` and `visc` (see [README.md](README.md) for the full column list).
+1. **Upload your CSV or Excel workbook** (`.csv`, `.xlsx`, or `.xlsm`) in the sidebar. Excel data should have one observation per row and column headers in the first row. Choose a worksheet if prompted.
 
-2. Under **Independent variables**, choose one or more of `temp`, `loading`, and `conc`. Training and plots use only the columns you select.
+2. Review the data preview. Choose one or more numeric **Input variables** and one or more different numeric **Target variables to predict**. The app trains all nine models separately for each target.
 
-3. Click **Train Models** (🔧 Train Models). Wait until training finishes; a success message appears when models are ready.
+3. Click **Train Models** (🔧 Train Models). Rows with missing/non-numeric values in selected columns are excluded. At least 10 complete rows are required.
 
 4. Open the **Predict** tab (🔮 Predict) in the main area. Enter values for each selected input, then click **Predict** (🔮 Predict) to see all nine models’ outputs in one table.
 
@@ -150,9 +149,9 @@ Use the same CSV rules as the app (see [README.md](README.md)). CatBoost may wri
 | Problem | Solution |
 |---------|----------|
 | `python` not recognized | Reinstall Python and check "Add Python to PATH" |
-| `python` opens the Microsoft Store instead of your venv | Use `.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.venv\Scripts\python.exe -m streamlit run app.py` |
+| `python` opens the Microsoft Store instead of your venv | Use `.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.venv\Scripts\python.exe -m streamlit run 6d.py` |
 | `Activate.ps1 cannot be loaded` (PowerShell) | Run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` |
-| Port 8501 already in use | Run: `python -m streamlit run app.py --server.port 8502` |
+| Port 8501 already in use | Run: `python -m streamlit run 6d.py --server.port 8502` |
 | Package install errors | Make sure the virtual environment is activated (see step 4) |
 | `5d.py` exits or skips the file / feature GUI | On a headless server, Tk may be unavailable; run from a desktop session or see the script’s non-interactive fallback (console prompt or all available inputs). |
 | Matplotlib windows do not appear (`5d.py`) | Run from an environment with a display (local desktop). On remote Linux, configure a display or save figures by adapting the script. |

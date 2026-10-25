@@ -32,42 +32,47 @@ This tool is designed for researchers and engineers working with thermophysical 
 
 ### Workflow
 
-1. You prepare a CSV file with your experimental data.
-2. You upload the CSV and click **Train Models**.
-3. The app splits the data (80% training / 20% testing), trains all nine models, and caches the results so navigation remains instant.
-4. You explore the results in the tabbed interface: feature analysis, a unified prediction table, and one dedicated tab per model.
-5. You enter new conditions and click **Predict** to get predictions from all nine models simultaneously.
+1. You prepare a CSV or Excel workbook with one observation per row and variable names in the header row.
+2. You upload the file, choose a worksheet if needed, preview the data, and select input and target variables.
+3. You click **Train Models**.
+4. The app splits the data (80% training / 20% testing), trains all nine models for each selected target, and caches the results so navigation remains instant.
+5. You explore the results in the tabbed interface: feature analysis, a unified prediction table, and one dedicated tab per model.
+6. You enter new conditions and click **Predict** to get predictions from all nine models simultaneously.
 
 ### Repository Layout
 
 | Path | Role |
 |------|------|
-| [`app.py`](app.py) | Streamlit UI: upload CSV, choose inputs, train, analyse, predict |
+| [`6d.py`](6d.py) | Streamlit UI: upload CSV/Excel, choose inputs and targets, train, analyse, predict |
+| [`app.py`](app.py) | Compatibility entry point for the 6d Streamlit app |
+| [`data_utils.py`](data_utils.py) | CSV/Excel loading and numeric-column preparation |
 | [`5d.py`](5d.py) | Standalone Python CLI workflow: load CSV, choose features, train models, print metrics, save parity plots |
 | [`requirements.txt`](requirements.txt) | Python dependencies for the app, CLI script, and notebook workflows |
 | [`HOW_TO_RUN.md`](HOW_TO_RUN.md) | Step-by-step local setup (venv, install, run) |
 | `5d.ipynb`, `4d_predict.ipynb` | Notebook variants of the workflow |
 
-### Supported Property Pairs
+### Suggested Thermophysical Targets
 
-The application detects which property pair is present in your CSV and trains two sets of models accordingly — one set per target variable:
+The app suggests familiar target columns when they are present, but no specific property names are required. Select any numeric columns as model inputs and one or more different numeric columns as targets. A separate set of nine models is trained for each selected target.
 
 | Mode | Target 1 | Target 2 |
 |------|----------|----------|
 | Thermal mode | `thcond` — thermal conductivity | `spheat` — specific heat |
 | Transport mode | `density` — density | `visc` — dynamic viscosity |
 
-All nine models are trained independently for each target, giving you 18 trained models in total per run.
+For example, selecting three targets trains 27 models.
 
 ### Data Splitting and Caching
 
-The data is split into **80% training / 20% testing** using a fixed random seed (`random_state=42`) to ensure reproducibility. Once trained, all models are cached by Streamlit's resource cache (`@st.cache_resource`), so switching between tabs does not retrain anything. The cache is only invalidated if you upload a different CSV file.
+The data is split into **80% training / 20% testing** using a fixed random seed (`random_state=42`) to ensure reproducibility. Once trained, all models are cached by Streamlit's resource cache (`@st.cache_resource`), so switching between tabs does not retrain anything. The cache is invalidated when the file, worksheet, or selected variables change.
 
 ---
 
 ## Input Data Format
 
-Your CSV file must contain exactly these columns (column names are case-sensitive):
+The 6d app accepts CSV, XLSX, and XLSM files. Arrange the table with one observation per row and variable names in the first row. Choose an Excel worksheet in the sidebar when the workbook contains multiple sheets. Any numeric columns can be selected as inputs or targets; target columns must be different from input columns.
+
+These familiar column names are suggested automatically when present:
 
 | Column | Description | Unit (typical) |
 |--------|-------------|----------------|
@@ -79,10 +84,9 @@ Your CSV file must contain exactly these columns (column names are case-sensitiv
 | `density` | Density | kg/m³ |
 | `visc` | Dynamic viscosity | mPa·s |
 
-- Include either the `thcond`+`spheat` pair **or** the `density`+`visc` pair — not required to have all four.
-- **Independent variables:** the CSV should include whichever of `temp`, `loading`, and `conc` you want to use. In the app, the sidebar **Independent variables** multiselect lets you train on any non-empty subset (for example, only `temp` and `loading`). The CLI script `5d.py` accepts feature names directly through `--features`, or it prompts you if you run it without arguments.
-- Extra columns beyond those listed are ignored.
-- There is no hard minimum on row count, but at least 30–50 rows are recommended for meaningful model training.
+- The app excludes non-numeric columns from the selectors. Rows with missing or non-numeric values in any selected column are omitted from training.
+- At least 10 complete rows are required; 30–50 or more are recommended for meaningful model training.
+- The CLI script `5d.py` remains limited to the legacy thermophysical column names.
 
 Example CSV structure:
 ```
@@ -104,7 +108,7 @@ temp,loading,conc,thcond,spheat
    ```
 3. Start the Streamlit app:
    ```bash
-   python -m streamlit run app.py
+   python -m streamlit run 6d.py
    ```
 4. Or run the Python CLI training script:
    ```bash
@@ -441,7 +445,7 @@ The app is publicly available — no installation required:
 
 2. **Run the app**
    ```
-   python -m streamlit run app.py
+   python -m streamlit run 6d.py
    ```
 
 3. **Open your browser** at `http://localhost:8501`
@@ -450,7 +454,7 @@ The app is publicly available — no installation required:
 
 ## Command-line training script
 
-The entry point is [`5d.py`](5d.py). Use this when you prefer a terminal or IDE run instead of the Streamlit UI. Behaviour matches the core training logic in `app.py` (same targets, split, and model definitions): metrics on the test set, printed linear / polynomial / ridge formulas, example predictions, and Matplotlib parity grids (test set and full data) for each target.
+The entry point is [`5d.py`](5d.py). Use this when you prefer a terminal or IDE run instead of the Streamlit UI. It retains the original thermophysical column conventions and trains the selected targets with the same model family.
 
 **How to run**
 

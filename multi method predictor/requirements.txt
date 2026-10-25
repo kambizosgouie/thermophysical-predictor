@@ -1,0 +1,13 @@
+# Python 3.10+
+# Install with: python -m pip install -r requirements.txt
+
+streamlit==1.55.0
+pandas==2.3.1
+openpyxl==3.1.5
+numpy==2.3.2
+scikit-learn==1.7.2
+matplotlib==3.10.6
+xgboost==3.0.5
+catboost==1.2.10
+shap==0.51.0
+ipykernel==6.29.5
