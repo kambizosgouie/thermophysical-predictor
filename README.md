@@ -1,4 +1,4 @@
-# Thermophysical Property Predictor
+# General Property Predictor — 6d1
 
 A Streamlit-based machine learning web application for predicting thermophysical properties of nanofluids or similar fluid systems. Given experimental or simulation data with temperature, particle loading, and concentration as inputs, the app automatically trains **nine different regression models**, evaluates them against each other using standard metrics, and lets you instantly predict properties for new conditions—all through an interactive browser interface with no coding required.
 
@@ -43,7 +43,7 @@ This tool is designed for researchers and engineers working with thermophysical 
 
 | Path | Role |
 |------|------|
-| [`6d.py`](6d.py) | Streamlit UI: upload CSV/Excel, choose inputs and targets, train, analyse, predict |
+| [`6d1.py`](6d1.py) | Streamlit UI: upload CSV/Excel, choose inputs and targets, train, analyse, predict |
 | [`app.py`](app.py) | Compatibility entry point for the 6d Streamlit app |
 | [`data_utils.py`](data_utils.py) | CSV/Excel loading and numeric-column preparation |
 | [`5d.py`](5d.py) | Standalone Python CLI workflow: load CSV, choose features, train models, print metrics, save parity plots |
@@ -108,7 +108,7 @@ temp,loading,conc,thcond,spheat
    ```
 3. Start the Streamlit app:
    ```bash
-   python -m streamlit run 6d.py
+   python -m streamlit run 6d1.py
    ```
 4. Or run the Python CLI training script:
    ```bash
@@ -347,7 +347,7 @@ This tab provides a statistical understanding of your data before examining indi
 
 #### Section 1: Correlation (inputs → outputs)
 
-Two heatmaps are shown side by side:
+Two heatmaps are shown side by side, with a row for each selected target:
 
 - **Pearson Correlation** — measures the strength and direction of the *linear* relationship between each input feature and each target variable. Values range from -1 (perfect negative linear correlation) to +1 (perfect positive linear correlation). Values near 0 mean no linear relationship.
 - **Spearman Correlation** — measures the strength of the *monotonic* (not necessarily linear) relationship, making it more robust to outliers and non-linear but monotonic trends.
@@ -358,7 +358,7 @@ Each cell displays the numerical correlation value. Cells with |value| > 0.5 are
 
 A grouped bar chart showing the **normalised feature importance** of each input (`temp`, `loading`, `conc`) as assigned by the four tree-based models: Random Forest, Gradient Boosting, XGBoost, and CatBoost. Importances are normalised to sum to 1 within each model.
 
-This answers the question: *"Which input variable has the greatest influence on each target property?"* The chart is produced separately for each target (two side-by-side plots).
+This answers the question: *"Which input variable has the greatest influence on each target property?"* The charts for all targets are grouped together in this section.
 
 #### Section 3: SHAP Values (best tree model)
 
@@ -416,7 +416,7 @@ For the Polynomial model, all 9 degree-2 terms and their coefficients are shown.
 Two scatter plots are shown per target variable (four plots total per model tab):
 
 - **Test data parity plot** — true values (x-axis) vs. predicted values (y-axis) on the 20% test set. A perfect model would have all points falling exactly on the red dashed diagonal line (the 1:1 line). Scatter around this line indicates prediction error; systematic deviation indicates bias.
-- **Full dataset parity plot** — the same plot but using all data (training + test). Comparing the two plots reveals if a model is overfitting (much better on training data than test data).
+- **Full dataset parity plot** — the same plot but using all data, with training points in blue and test points in orange. Comparing the two plots reveals if a model is overfitting (much better on training data than test data).
 
 Both plots include axis labels using the actual target variable name, a grid, and alpha-blended markers to show point density.
 
@@ -445,7 +445,7 @@ The app is publicly available — no installation required:
 
 2. **Run the app**
    ```
-   python -m streamlit run 6d.py
+   python -m streamlit run 6d1.py
    ```
 
 3. **Open your browser** at `http://localhost:8501`
